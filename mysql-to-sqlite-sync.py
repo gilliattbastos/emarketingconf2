@@ -315,15 +315,26 @@ class MySQLToSQLiteSync:
             mysql_data = self.get_mysql_data(table)
             sqlite_data = self.get_sqlite_data(table, primary_key)
             
+            # Criar índice adicional por address+domain para verificar UNIQUE constraint
+            sqlite_by_address_domain = {}
+            for pk, row in sqlite_data.items():
+                key = (row['address'], row['domain'])
+                sqlite_by_address_domain[key] = row
+            
             cursor = self.sqlite_conn.cursor()
             
             for mysql_row in mysql_data:
                 pk_value = mysql_row[primary_key]
+                address_domain_key = (mysql_row['address'], mysql_row['domain'])
                 
                 # Preparar dados para comparação
                 mysql_row_compare = {k: v for k, v in mysql_row.items() if k != primary_key}
                 
-                if pk_value not in sqlite_data:
+                # Verificar se existe por chave primária OU por address+domain (UNIQUE constraint)
+                existing_by_pk = pk_value in sqlite_data
+                existing_by_unique = address_domain_key in sqlite_by_address_domain
+                
+                if not existing_by_pk and not existing_by_unique:
                     # Registro novo - INSERT
                     try:
                         cursor.execute(
@@ -339,10 +350,39 @@ class MySQLToSQLiteSync:
                             )
                         )
                         self.stats['inserted'] += 1
-                        logger.info(f"  [INSERT] {table}: cd_alias={pk_value}, address={mysql_row['address']}")
+                        logger.info(f"  [INSERT] {table}: cd_alias={pk_value}, address={mysql_row['address']}@{mysql_row['domain']}")
                     except Exception as e:
-                        logger.error(f"  [ERRO INSERT] {table}: cd_alias={pk_value} - {e}")
+                        logger.error(f"  [ERRO INSERT] {table}: cd_alias={pk_value}, address={mysql_row['address']}@{mysql_row['domain']} - {e}")
                         self.stats['errors'] += 1
+                
+                elif existing_by_unique and not existing_by_pk:
+                    # Existe registro com mesmo address+domain mas cd_alias diferente
+                    # Atualizar o registro existente com o novo cd_alias
+                    existing_row = sqlite_by_address_domain[address_domain_key]
+                    old_pk = existing_row[primary_key]
+                    
+                    try:
+                        # Atualizar usando address+domain como critério
+                        cursor.execute(
+                            f"""UPDATE {table} SET 
+                            cd_alias = ?,
+                            goto = ?, 
+                            active = ?
+                            WHERE address = ? AND domain = ?""",
+                            (
+                                mysql_row['cd_alias'],
+                                mysql_row['goto'],
+                                mysql_row['active'],
+                                mysql_row['address'],
+                                mysql_row['domain']
+                            )
+                        )
+                        self.stats['updated'] += 1
+                        logger.info(f"  [UPDATE PK] {table}: cd_alias {old_pk}->{pk_value}, address={mysql_row['address']}@{mysql_row['domain']}")
+                    except Exception as e:
+                        logger.error(f"  [ERRO UPDATE PK] {table}: cd_alias={pk_value} - {e}")
+                        self.stats['errors'] += 1
+                
                 else:
                     # Registro existe - verificar alteração
                     sqlite_row = sqlite_data[pk_value]
@@ -370,7 +410,7 @@ class MySQLToSQLiteSync:
                                 )
                             )
                             self.stats['updated'] += 1
-                            logger.info(f"  [UPDATE] {table}: cd_alias={pk_value}, address={mysql_row['address']}")
+                            logger.info(f"  [UPDATE] {table}: cd_alias={pk_value}, address={mysql_row['address']}@{mysql_row['domain']}")
                         except Exception as e:
                             logger.error(f"  [ERRO UPDATE] {table}: cd_alias={pk_value} - {e}")
                             self.stats['errors'] += 1
