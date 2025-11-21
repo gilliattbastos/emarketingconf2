@@ -1,0 +1,21 @@
+[Unit]
+Description=MySQL to SQLite Sync Service
+After=network.target mysql.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /usr/local/bin/mysql-to-sqlite-sync.py -c /etc/postfix/db/sync-config.json
+Restart=on-failure
+RestartSec=300
+StandardOutput=append:/var/log/mysql-sqlite-sync.log
+StandardError=append:/var/log/mysql-sqlite-sync.log
+
+# Segurança
+User=root
+Group=root
+ProtectSystem=strict
+ReadWritePaths=/var/log /etc/postfix/db
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

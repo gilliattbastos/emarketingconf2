@@ -1,0 +1,16 @@
+{
+  "mysql": {
+    "host": "localhost",
+    "port": 3306,
+    "user": "root",
+    "password": "sua_senha_mysql",
+    "database": "mailserver"
+  },
+  "sqlite": {
+    "path": "/etc/postfix/db/mailserver.db"
+  },
+  "sync": {
+    "interval_minutes": 5,
+    "log_file": "/var/log/mysql-sqlite-sync.log"
+  }
+}
