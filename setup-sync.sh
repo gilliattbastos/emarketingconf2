@@ -43,6 +43,14 @@ if ! command -v python3 &> /dev/null; then
     apt-get install -y python3 python3-pip
 fi
 
+# Verificar se python3-pip está instalado
+if ! command -v python3-pip &> /dev/null; then
+    log_error "python3-pip não está instalado!"
+    log_info "Instalando python3-pip..."
+    apt-get update
+    apt-get install -y python3-pip
+fi
+
 PYTHON_VERSION=$(python3 --version)
 log_info "Python instalado: $PYTHON_VERSION"
 
