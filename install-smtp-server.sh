@@ -144,8 +144,7 @@ CREATE TABLE IF NOT EXISTS tb_mail_mailbox (
   domain VARCHAR(255) NOT NULL,
   active INTEGER NOT NULL DEFAULT 1,
   active_send INTEGER NOT NULL DEFAULT 1,
-  storage_id INTEGER NOT NULL DEFAULT 1,
-  FOREIGN KEY (domain) REFERENCES tb_mail_domain(domain)
+  storage_id INTEGER NOT NULL DEFAULT 1
 );
 
 -- Tabela de alias
@@ -154,13 +153,8 @@ CREATE TABLE IF NOT EXISTS tb_mail_alias (
   address VARCHAR(255) NOT NULL,
   goto TEXT NOT NULL,
   domain VARCHAR(255) NOT NULL,
-  active INTEGER NOT NULL DEFAULT 1,
-  UNIQUE(address, domain)
+  active INTEGER NOT NULL DEFAULT 1
 );
-
--- Inserir domínio padrão
-INSERT OR IGNORE INTO tb_mail_domain (domain, transport, active) 
-VALUES ('${MAIN_DOMAIN}', 'virtual', 1);
 EOF
 
 # Criar banco de dados
