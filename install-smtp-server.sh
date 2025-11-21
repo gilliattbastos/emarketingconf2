@@ -81,6 +81,7 @@ log_info "Atualizando sistema e instalando pacotes necessários..."
 apt-get update
 apt-get install -y \
     postfix \
+    postfix-sqlite \
     dovecot-core \
     dovecot-sqlite \
     sqlite3 \
@@ -161,8 +162,8 @@ EOF
 sqlite3 "$DB_DIR/mailserver.db" < "$DB_DIR/schema.sql"
 
 # Ajustar permissões
-chown -R postfix:postfix "$DB_DIR"
-chmod 750 "$DB_DIR"
+chown -R root:postfix "$DB_DIR"
+chmod 755 "$DB_DIR"
 chmod 640 "$DB_DIR/mailserver.db"
 
 log_info "Banco de dados criado em: $DB_DIR/mailserver.db"
@@ -400,19 +401,29 @@ inet_protocols = ipv4
 mynetworks = 127.0.0.0/8
 relay_domains = 
 
-# TLS/SSL para conexões de saída
-smtp_use_tls = yes
-smtp_tls_security_level = may
-smtp_tls_loglevel = 1
-
-# TLS/SSL para submission (porta 587)
-smtpd_use_tls = yes
-smtpd_tls_security_level = encrypt
-smtpd_tls_cert_file = $SSL_CERT
+# TLS/SSL para conexões de entrada
 smtpd_tls_key_file = $SSL_KEY
-smtpd_tls_session_cache_database = btree:\${data_directory}/smtpd_scache
-smtpd_tls_loglevel = 1
-smtpd_tls_received_header = yes
+smtpd_tls_cert_file = $SSL_CERT
+smtpd_tls_CAfile = $SSL_CERT
+smtpd_use_tls=yes
+smtpd_tls_session_cache_database = btree:${data_directory}/smtpd_scache
+smtpd_tls_protocols = !SSLv2 !SSLv3
+smtpd_tls_mandatory_protocols = !SSLv2 !SSLv3
+lmtp_tls_protocols = !SSLv2 !SSLv3
+lmtp_tls_mandatory_protocols = !SSLv2 !SSLv3
+smtpd_tls_exclude_ciphers = aNULL, eNULL, EXPORT, DES, RC4, MD5, PSK, aECDH, EDH-DSS-DES-CBC3-SHA, EDH-RSA-DES-CDC3-SHA, KRB5-DE5, CBC3-SHA
+smtpd_tls_dh512_param_file = /etc/ssl/dh512.pem
+smtpd_tls_dh1024_param_file = /etc/ssl/dh2048.pem
+
+smtpd_tls_key_file = $SSL_KEY
+smtpd_tls_cert_file = $SSL_CERT
+smtpd_tls_CAfile = $SSL_CERT
+smtp_tls_session_cache_database = btree:${data_directory}/smtp_scache
+smtp_tls_protocols = !SSLv2 !SSLv3
+smtp_tls_mandatory_protocols = !SSLv2 !SSLv3
+smtp_tls_security_level = may
+smtp_tls_note_starttls_offer = yes
+smtp_tls_loglevel = 1
 
 # Autenticação SASL via Dovecot
 smtpd_sasl_type = dovecot
