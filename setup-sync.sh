@@ -40,26 +40,32 @@ if ! command -v python3 &> /dev/null; then
     log_error "Python 3 não está instalado!"
     log_info "Instalando Python 3..."
     apt-get update
-    apt-get install -y python3 python3-pip
+    apt-get install -y python3 python3-pip python3-venv
 fi
 
-# Verificar se python3-pip está instalado
-if ! command -v python3-pip &> /dev/null; then
-    log_error "python3-pip não está instalado!"
-    log_info "Instalando python3-pip..."
+# Verificar se python3-venv está instalado
+if ! python3 -m venv --help &> /dev/null; then
+    log_info "Instalando python3-venv..."
     apt-get update
-    apt-get install -y python3-pip
+    apt-get install -y python3-venv
 fi
 
 PYTHON_VERSION=$(python3 --version)
 log_info "Python instalado: $PYTHON_VERSION"
 
-# Instalar dependências Python
-log_info "Instalando dependências Python..."
-pip3 install pymysql tabulate
+# Criar diretório para o ambiente virtual
+VENV_DIR="/opt/mysql-sqlite-sync"
+log_info "Criando ambiente virtual em $VENV_DIR..."
+mkdir -p "$VENV_DIR"
+python3 -m venv "$VENV_DIR/venv"
+
+# Instalar dependências Python no venv
+log_info "Instalando dependências Python no ambiente virtual..."
+"$VENV_DIR/venv/bin/pip" install --upgrade pip
+"$VENV_DIR/venv/bin/pip" install pymysql tabulate
 
 # Verificar se o script existe
-SCRIPT_PATH="/usr/local/bin/mysql-to-sqlite-sync.py"
+SCRIPT_PATH="$VENV_DIR/mysql-to-sqlite-sync.py"
 if [ ! -f "$SCRIPT_PATH" ]; then
     log_info "Copiando script para $SCRIPT_PATH..."
     cp mysql-to-sqlite-sync.py "$SCRIPT_PATH"
@@ -121,7 +127,7 @@ fi
 
 # Testar conexão
 log_info "Testando sincronização..."
-if python3 "$SCRIPT_PATH" -c "$CONFIG_FILE"; then
+if "$VENV_DIR/venv/bin/python" "$SCRIPT_PATH" -c "$CONFIG_FILE"; then
     log_info "Teste de sincronização bem-sucedido!"
 else
     log_error "Erro no teste de sincronização. Verifique as configurações."
@@ -142,7 +148,7 @@ if [ "$SCHEDULE_METHOD" = "1" ]; then
     read -p "Intervalo de sincronização em minutos [5]: " INTERVAL
     INTERVAL=${INTERVAL:-5}
     
-    CRON_LINE="*/$INTERVAL * * * * /usr/bin/python3 $SCRIPT_PATH -c $CONFIG_FILE >> /var/log/mysql-sqlite-sync.log 2>&1"
+    CRON_LINE="*/$INTERVAL * * * * $VENV_DIR/venv/bin/python $SCRIPT_PATH -c $CONFIG_FILE >> /var/log/mysql-sqlite-sync.log 2>&1"
     
     # Verificar se já existe
     if crontab -l 2>/dev/null | grep -q "mysql-to-sqlite-sync.py"; then
@@ -160,8 +166,21 @@ elif [ "$SCHEDULE_METHOD" = "2" ]; then
     read -p "Intervalo de sincronização em minutos [5]: " INTERVAL
     INTERVAL=${INTERVAL:-5}
     
-    # Copiar service
-    cp mysql-sqlite-sync.service /etc/systemd/system/
+    # Criar service customizado com venv
+    cat > /etc/systemd/system/mysql-sqlite-sync.service << EOF
+[Unit]
+Description=MySQL to SQLite Synchronization
+After=network.target mysql.service
+
+[Service]
+Type=oneshot
+ExecStart=$VENV_DIR/venv/bin/python $SCRIPT_PATH -c $CONFIG_FILE
+StandardOutput=append:/var/log/mysql-sqlite-sync.log
+StandardError=append:/var/log/mysql-sqlite-sync.log
+
+[Install]
+WantedBy=multi-user.target
+EOF
     
     # Criar timer customizado com intervalo escolhido
     cat > /etc/systemd/system/mysql-sqlite-sync.timer << EOF
@@ -193,25 +212,25 @@ EOF
 fi
 
 # Criar script de wrapper para facilitar execução manual
-cat > /usr/local/bin/sync-mail-db << 'EOF'
+cat > /usr/local/bin/sync-mail-db << EOF
 #!/bin/bash
 # Wrapper para sincronização manual
 
-python3 /usr/local/bin/mysql-to-sqlite-sync.py -c /etc/postfix/db/sync-config.json "$@"
+$VENV_DIR/venv/bin/python $SCRIPT_PATH -c $CONFIG_FILE "\$@"
 EOF
 
 chmod +x /usr/local/bin/sync-mail-db
 
 # Criar script para verificar status
 if [ -f "check-sync-status.py" ]; then
-    cp check-sync-status.py /usr/local/bin/
-    chmod +x /usr/local/bin/check-sync-status.py
+    cp check-sync-status.py "$VENV_DIR/"
+    chmod +x "$VENV_DIR/check-sync-status.py"
     
-    cat > /usr/local/bin/check-mail-sync << 'EOF'
+    cat > /usr/local/bin/check-mail-sync << EOF
 #!/bin/bash
 # Wrapper para verificar status de sincronização
 
-python3 /usr/local/bin/check-sync-status.py "$@"
+$VENV_DIR/venv/bin/python $VENV_DIR/check-sync-status.py "\$@"
 EOF
     
     chmod +x /usr/local/bin/check-mail-sync
@@ -236,6 +255,7 @@ echo "  INSTALAÇÃO CONCLUÍDA!"
 echo "========================================================================"
 echo ""
 echo "Configuração:"
+echo "  - Ambiente Virtual: $VENV_DIR/venv"
 echo "  - Script: $SCRIPT_PATH"
 echo "  - Config: $CONFIG_FILE"
 echo "  - Log: /var/log/mysql-sqlite-sync.log"
