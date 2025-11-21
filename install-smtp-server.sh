@@ -186,10 +186,12 @@ fi
 lego --email="$ADMIN_EMAIL" \
      --domains="$HOSTNAME" \
      --path="/etc/lego" \
+     --http.port=:80 \
+     --http \
      --accept-tos \
      run || {
     log_warn "Falha ao gerar certificado automaticamente."
-    log_warn "Você precisará configurar o certificado manualmente ou usar certbot."
+    log_warn "Você precisará configurar o certificado manualmente."
     log_warn "Criando certificado auto-assinado temporário..."
     
     # Criar certificado auto-assinado como fallback
